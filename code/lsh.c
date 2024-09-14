@@ -24,6 +24,8 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+#include <sys/wait.h>
+
 // The <unistd.h> header is your gateway to the OS's process management facilities.
 #include <unistd.h>
 
@@ -53,6 +55,29 @@ int main(void)
       {
         // Just prints cmd
         print_cmd(&cmd);
+	int pid;
+	int status;
+	Pgm * p = cmd.pgm;
+	while(p != NULL) {
+		char ** strs = p->pgmlist;	
+		int i = 0;
+		while (*(strs+i)) {	
+			printf("%s ", *(strs+i));
+			i++;
+		}
+		printf("\n");
+		if( (pid = fork()) == 0) {
+
+			if (*strs) {
+				execvp(*strs, strs);
+			}
+		} else {
+			wait(&status);
+			printf("status: %d\n", status);
+		}
+		p = p->next;
+	}
+		
       }
       else
       {
