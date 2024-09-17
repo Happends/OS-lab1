@@ -65,12 +65,20 @@ int main(void)
 	
 		
 	while(p != NULL) {
+		char ** strs = p->pgmlist;	
 
-		if (strcmp(*(p->pgmlist), "exit") == 0) {
+		if (strcmp(*strs, "exit") == 0) {
 			return 0;
+		} else if (strcmp(*strs, "cd") == 0 && ++strs != NULL) {
+
+			if(chdir(*strs)) {
+				printf("directory: %s invalid\n", *strs);
+			}
+			//printf("changing dir to: %s\n", *strs);
+			goto next;
 		}
 
-		char ** strs = p->pgmlist;	
+
 		int i = 0;
 
 		while (*(strs+i)) {	
@@ -89,6 +97,7 @@ int main(void)
 			wait(&status);
 			printf("status: %d\n", status);
 		}
+next:
 		p = p->next;
 	}
 		
