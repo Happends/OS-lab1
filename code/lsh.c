@@ -31,6 +31,8 @@
 
 #include "parse.h"
 
+#include <fcntl.h>
+
 static void print_cmd(Command *cmd);
 static void print_pgm(Pgm *p);
 void stripwhite(char *);
@@ -90,6 +92,28 @@ int main(void)
 
 		if( (pid = fork()) == 0) {
 
+			// redirect stdout
+			if (cmd.rstdout != NULL) {
+				int fd = open(cmd.rstdout, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+				dup2(fd, 1);
+				close(fd);
+			}
+			
+			// redirect stderr
+			if (cmd.rstderr !=NULL) {
+				int fd = open(cmd.rstdin, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+				dup2(fd, 2);
+				close(fd);
+			}
+
+			//redirect stdin
+			if (cmd.rstdin !=NULL) {
+				int fd = open(cmd.rstdin, O_RDONLY);
+				dup2(fd, 0);
+				close(fd);
+			}
+
+			//execute command
 			if (*strs) {
 				execvp(*strs, strs);
 			}
