@@ -24,6 +24,8 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+#include <sys/wait.h>
+#include <signal.h>
 // The <unistd.h> header is your gateway to the OS's process management facilities.
 #include <unistd.h>
 
@@ -33,13 +35,24 @@ static void print_cmd(Command *cmd);
 static void print_pgm(Pgm *p);
 void stripwhite(char *);
 
+
+void handle_sigint(int proc) {
+  if (proc >= 0){
+    printf("\n Caught CTRL + C", proc);
+    kill(proc, SIGKILL);
+    //waitpid(proc, &status, 0);
+    }
+}
+
 int main(void)
 {
   for (;;)
   {
     char *line;
     line = readline("> ");
-
+    if (line == NULL){
+      return 0;
+    }
     // Remove leading and trailing whitespace from the line
     stripwhite(line);
 
@@ -51,8 +64,38 @@ int main(void)
       Command cmd;
       if (parse(line, &cmd) == 1)
       {
-        // Just prints cmd
-        print_cmd(&cmd);
+        
+        
+	      int pid;
+	      int status;
+	      Pgm * p = cmd.pgm;
+	      while(p != NULL) {
+		        char ** strs = p->pgmlist;	
+
+		        if (strcmp(*strs, "exit") == 0) {
+			          return 0;
+		        } else if (strcmp(*strs, "cd") == 0 && ++strs != NULL) {
+
+			      if(chdir(*strs)) {
+				        printf("directory: %s invalid\n", *strs);
+			      }
+			//printf("changing dir to: %s\n", *strs);
+			      goto next;
+		        }
+		        printf("\n");
+		        if( (pid = fork()) == 0) {
+			          if (*strs) {
+				            execvp(*strs, strs);
+			          }
+		        } else {
+                signal(SIGINT, handle_sigint);
+			          wait(&status);
+			          printf("status: %d\n", status);
+		        }
+            next:
+		        p = p->next;
+	      }
+		
       }
       else
       {
