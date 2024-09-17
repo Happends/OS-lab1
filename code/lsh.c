@@ -41,6 +41,9 @@ int main(void)
   {
     char *line;
     line = readline("> ");
+    if (line == NULL) {
+	    return 0;
+    }
 
     // Remove leading and trailing whitespace from the line
     stripwhite(line);
@@ -58,14 +61,25 @@ int main(void)
 	int pid;
 	int status;
 	Pgm * p = cmd.pgm;
+
+	
+		
 	while(p != NULL) {
+
+		if (strcmp(*(p->pgmlist), "exit") == 0) {
+			return 0;
+		}
+
 		char ** strs = p->pgmlist;	
 		int i = 0;
+
 		while (*(strs+i)) {	
 			printf("%s ", *(strs+i));
 			i++;
 		}
 		printf("\n");
+
+
 		if( (pid = fork()) == 0) {
 
 			if (*strs) {
