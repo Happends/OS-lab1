@@ -37,16 +37,28 @@
 static void print_cmd(Command *cmd);
 static void print_pgm(Pgm *p);
 void stripwhite(char *);
-
+volatile int foreground_pid=-1;
 
 void sigint_handler(int proc){
-  killpg(proc, SIGINT);
+  if(foreground_pid==-1){
+    exit(0);
+  }
+  //kill(proc, SIGINT);
+  int trigger_pid = foreground_pid;
+  foreground_pid = -1;
+  waitpid(trigger_pid, NULL,0);
   printf("\n Caught sigint \n");
+}
+void wait_child(){
+  int status;
+  while(waitpid(-1,&status, WNOHANG)>0);
 }
 
 int main(void)
 {
+  Command cmd;
 signal(SIGINT, sigint_handler);
+signal(SIGCHLD, wait_child);
   for (;;)
   {
 
@@ -117,7 +129,13 @@ signal(SIGINT, sigint_handler);
 
 
         if( (pid = fork()) == 0) {
-
+          if (cmd.background){
+            foreground_pid = -1;
+            signal(SIGINT,SIG_IGN);
+          } else {
+            foreground_pid = pid;
+            signal(SIGINT, sigint_handler);
+          }
           // redirect stdout
           if (cmd.rstdout != NULL) {
             int fd = open(cmd.rstdout, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -156,10 +174,18 @@ signal(SIGINT, sigint_handler);
           if (*strs) {
             execvp(*strs, strs);
           }
+          
           exit(0);
 
         } else if (pid != -1) {
-
+          if (cmd.background == false) {
+              foreground_pid = pid;
+              signal(SIGINT, sigint_handler);
+              } else {
+                foreground_pid = -1;
+                signal(SIGINT, SIG_IGN);
+              }
+          
           // printf("child pid: %d\n", pid);
           // printf("child pid: %x\n", pid);
           child_pids[child_pids_size] = pid;
@@ -182,7 +208,10 @@ signal(SIGINT, sigint_handler);
             }
 
             if (cmd.background == false) {
+              
+              
               while(wait(NULL) > 0);
+              foreground_pid = -1;
             }
             
           } else {
