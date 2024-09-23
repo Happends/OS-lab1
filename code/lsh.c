@@ -25,24 +25,23 @@
 #include <readline/history.h>
 
 #include <sys/wait.h>
-#include <signal.h>
+
 // The <unistd.h> header is your gateway to the OS's process management facilities.
 #include <unistd.h>
 
 #include "parse.h"
 
+#include <fcntl.h>
+
 static void print_cmd(Command *cmd);
 static void print_pgm(Pgm *p);
 void stripwhite(char *);
+volatile int sigint_flag = 0;
 
-
-void handle_sigint(int proc) {
-  if (proc >= 0){
-    printf("\n Caught CTRL + C", proc);
-    kill(proc, SIGKILL);
-    //waitpid(proc, &status, 0);
-    }
+void sigint_handler(int proc) {
+  printf("\n SIGINT caught \n");
 }
+
 
 int main(void)
 {
@@ -50,9 +49,10 @@ int main(void)
   {
     char *line;
     line = readline("> ");
-    if (line == NULL){
-      return 0;
+    if (line == NULL) {
+	    return 0;
     }
+
     // Remove leading and trailing whitespace from the line
     stripwhite(line);
 
@@ -64,37 +64,79 @@ int main(void)
       Command cmd;
       if (parse(line, &cmd) == 1)
       {
-        
-        
-	      int pid;
-	      int status;
-	      Pgm * p = cmd.pgm;
-	      while(p != NULL) {
-		        char ** strs = p->pgmlist;	
+        // Just prints cmd 
+        print_cmd(&cmd);
+	int pid;
+	int status;
+	Pgm * p = cmd.pgm;
 
-		        if (strcmp(*strs, "exit") == 0) {
-			          return 0;
-		        } else if (strcmp(*strs, "cd") == 0 && ++strs != NULL) {
+	
+		
+	while(p != NULL) {
+		char ** strs = p->pgmlist;	
+    signal(SIGINT, sigint_handler);
+		if (strcmp(*strs, "exit") == 0) {
+			return 0;
+		} else if (strcmp(*strs, "cd") == 0 && ++strs != NULL) {
 
-			      if(chdir(*strs)) {
-				        printf("directory: %s invalid\n", *strs);
-			      }
+			if(chdir(*strs)) {
+				printf("directory: %s invalid\n", *strs);
+			}
 			//printf("changing dir to: %s\n", *strs);
-			      goto next;
-		        }
-		        printf("\n");
-		        if( (pid = fork()) == 0) {
-			          if (*strs) {
-				            execvp(*strs, strs);
-			          }
-		        } else {
-                signal(SIGINT, handle_sigint);
-			          wait(&status);
-			          printf("status: %d\n", status);
-		        }
-            next:
-		        p = p->next;
-	      }
+			goto next;
+		}
+
+
+		int i = 0;
+
+		while (*(strs+i)) {	
+			printf("%s ", *(strs+i));
+			i++;
+		}
+		printf("\n");
+    int pid = fork();
+    if (pid < 0){
+      printf("\n Fork failed \n");
+    }
+		else if( pid == 0) {
+
+			// redirect stdout
+			if (cmd.rstdout != NULL) {
+				int fd = open(cmd.rstdout, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+				dup2(fd, 1);
+				close(fd);
+			}
+			
+			// redirect stderr
+			if (cmd.rstderr !=NULL) {
+				int fd = open(cmd.rstdin, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+				dup2(fd, 2);
+				close(fd);
+			}
+
+			//redirect stdin
+			if (cmd.rstdin !=NULL) {
+				int fd = open(cmd.rstdin, O_RDONLY);
+				dup2(fd, 0);
+				close(fd);
+			}
+
+			//execute command
+			if (*strs) {
+				execvp(*strs, strs);
+			} 
+      } else {
+          waitpid(0,&status, 0);
+			    printf("status: %d\n", status);
+      }
+			
+		
+    
+
+
+next:
+		p = p->next;
+	}
 		
       }
       else
