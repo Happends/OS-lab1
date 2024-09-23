@@ -39,16 +39,17 @@ static void print_pgm(Pgm *p);
 void stripwhite(char *);
 volatile int foreground_pid=-1;
 
+
+int child_pids[10];
+int child_pids_size = 0;
+
 void sigint_handler(int proc){
-  if(foreground_pid==-1){
-    exit(0);
+  for(int i = 0; i < child_pids_size; i++) {
+    kill(child_pids[i], SIGINT);
   }
-  //kill(proc, SIGINT);
-  int trigger_pid = foreground_pid;
-  foreground_pid = -1;
-  waitpid(trigger_pid, NULL,0);
-  printf("\n Caught sigint \n");
+  child_pids_size = 0;
 }
+
 void wait_child(){
   int status;
   while(waitpid(-1,&status, WNOHANG)>0);
@@ -56,23 +57,20 @@ void wait_child(){
 
 int main(void)
 {
-  Command cmd;
-signal(SIGINT, sigint_handler);
-signal(SIGCHLD, wait_child);
+  signal(SIGINT, sigint_handler);
+  signal(SIGCHLD, wait_child);
+
   for (;;)
   {
-
-
     int pipefd[2];
     int pipefd_prev[2];
     int prev_pipe = false;
 
-    int child_pids[10];
-    int child_pids_size = 0;
-
     char *line;
     line = readline("> ");
     if (line == NULL) {
+      signal(SIGQUIT, SIG_IGN);
+      kill(0, SIGQUIT);
 	    return 0;
     }
 
@@ -89,142 +87,133 @@ signal(SIGCHLD, wait_child);
       {
         // Just prints cmd
         print_cmd(&cmd);
-      int pid;
-      Pgm * p = cmd.pgm;
+        int pid;
+        Pgm * p = cmd.pgm;
 
+        while(p != NULL) {
+          char ** strs = p->pgmlist;	
 
+          if (strcmp(*strs, "exit") == 0) {
+            return 0;
+          } else if (strcmp(*strs, "cd") == 0 && ++strs != NULL) {
 
-      
-        
-      while(p != NULL) {
-        char ** strs = p->pgmlist;	
-
-        if (strcmp(*strs, "exit") == 0) {
-          return 0;
-        } else if (strcmp(*strs, "cd") == 0 && ++strs != NULL) {
-
-          if(chdir(*strs)) {
-            printf("directory: %s invalid\n", *strs);
-          }
-          //printf("changing dir to: %s\n", *strs);
-          goto next;
-        }
-
-
-        // int i = 0;
-        // while (*(strs+i)) {	
-        //   printf("%s ", *(strs+i));
-        //   i++;
-        // }
-        // printf("\n");
-
-        
-        if (p->next != NULL) {
-        
-          if(pipe(pipefd) < 0) {
-            printf("pipe unable to be created!\n");
+            if(chdir(*strs)) {
+              printf("directory: %s invalid\n", *strs);
+            }
+            //printf("changing dir to: %s\n", *strs);
+            goto next;
           }
 
-        }
 
+          // int i = 0;
+          // while (*(strs+i)) {	
+          //   printf("%s ", *(strs+i));
+          //   i++;
+          // }
+          // printf("\n");
 
-        if( (pid = fork()) == 0) {
-          if (cmd.background){
-            foreground_pid = -1;
-            signal(SIGINT,SIG_IGN);
-          } else {
-            foreground_pid = pid;
-            signal(SIGINT, sigint_handler);
-          }
-          // redirect stdout
-          if (cmd.rstdout != NULL) {
-            int fd = open(cmd.rstdout, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-            dup2(fd, 1);
-            close(fd);
-          } else if (prev_pipe) {
-            // printf("redirect command: %s stdout\n", *strs);
-            dup2(pipefd_prev[1], 1);
-          }
           
-          // redirect stderr
-          if (cmd.rstderr !=NULL) {
-            int fd = open(cmd.rstdin, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-            dup2(fd, 2);
-            close(fd);
-          }
-
-
-          //redirect stdin
-          if (cmd.rstdin !=NULL) {
-            int fd = open(cmd.rstdin, O_RDONLY);
-            dup2(fd, 0);
-            close(fd);
-          } else if (p->next != NULL) {
-            // printf("redirect command: %s stdin\n", *strs);
-            dup2(pipefd[0], 0);
-          }
-
-          if(p->next != NULL || prev_pipe) {
-            close(pipefd[0]);
-            close(pipefd[1]);
-          }
-
-
-          //execute command
-          if (*strs) {
-            execvp(*strs, strs);
-          }
-          
-          exit(0);
-
-        } else if (pid != -1) {
-          if (cmd.background == false) {
-              foreground_pid = pid;
-              signal(SIGINT, sigint_handler);
-              } else {
-                foreground_pid = -1;
-                signal(SIGINT, SIG_IGN);
-              }
-          
-          // printf("child pid: %d\n", pid);
-          // printf("child pid: %x\n", pid);
-          child_pids[child_pids_size] = pid;
-          child_pids_size++;
-
-          if (prev_pipe) {
-            close(pipefd_prev[0]);
-            close(pipefd_prev[1]);
-          }
-
           if (p->next != NULL) {
-            pipefd_prev[0] = pipefd[0];
-            pipefd_prev[1] = pipefd[1];
+          
+            if(pipe(pipefd) < 0) {
+              printf("pipe unable to be created!\n");
+            }
+
           }
 
-          if (p->next == NULL) {
-            if (prev_pipe) {
+
+          if( (pid = fork()) == 0) {
+
+            if (cmd.background){
+              signal(SIGINT,SIG_IGN);
+            } else {
+              signal(SIGINT, SIG_DFL);
+            }
+
+
+
+            // redirect stdout
+            if (cmd.rstdout != NULL) {
+              int fd = open(cmd.rstdout, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+              dup2(fd, 1);
+              close(fd);
+            } else if (prev_pipe) {
+              // printf("redirect command: %s stdout\n", *strs);
+              dup2(pipefd_prev[1], 1);
+            }
+            
+            // redirect stderr
+            if (cmd.rstderr !=NULL) {
+              int fd = open(cmd.rstdin, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+              dup2(fd, 2);
+              close(fd);
+            }
+
+
+            //redirect stdin
+            if (cmd.rstdin !=NULL) {
+              int fd = open(cmd.rstdin, O_RDONLY);
+              dup2(fd, 0);
+              close(fd);
+            } else if (p->next != NULL) {
+              // printf("redirect command: %s stdin\n", *strs);
+              dup2(pipefd[0], 0);
+            }
+
+            if(p->next != NULL || prev_pipe) {
               close(pipefd[0]);
               close(pipefd[1]);
             }
 
-            if (cmd.background == false) {
-              
-              
-              while(wait(NULL) > 0);
-              foreground_pid = -1;
+
+            //execute command
+            if (*strs) {
+              execvp(*strs, strs);
             }
             
-          } else {
-            prev_pipe = true;
-          }
 
-        } else {
-          printf("DEBUG: ERROR\n");
+          } else if (pid != -1) {
+            
+            if (prev_pipe) {
+              close(pipefd_prev[0]);
+              close(pipefd_prev[1]);
+            }
+
+            if (!cmd.background) {
+              child_pids[child_pids_size] = pid;
+              child_pids_size++;
+            }
+
+            if (p->next != NULL) {
+              pipefd_prev[0] = pipefd[0];
+              pipefd_prev[1] = pipefd[1];
+            }
+
+            if (p->next == NULL) {
+              if (prev_pipe) {
+                close(pipefd[0]);
+                close(pipefd[1]);
+              }
+
+              if (cmd.background == false) {
+                
+                
+                for(int i = 0; i < child_pids_size; i++) {
+                  while(waitpid(child_pids[i], NULL, WNOHANG) == 0);
+                }
+              }
+              
+            } else {
+              prev_pipe = true;
+            }
+
+          } else {
+            printf("DEBUG: ERROR\n");
+          }
+          next:
+          // printf("next\n");
+          p = p->next;
         }
-        next:
-        // printf("next\n");
-        p = p->next;
-      }
         
       }
       else
