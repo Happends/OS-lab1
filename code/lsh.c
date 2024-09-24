@@ -83,13 +83,15 @@ int main(void)
 
           if (strcmp(*strs, "exit") == 0) {
             return 0;
+
           } else if (strcmp(*strs, "cd") == 0 && ++strs != NULL) {
 
             if(chdir(*strs)) {
               printf("directory: %s invalid\n", *strs);
             }
             //printf("changing dir to: %s\n", *strs);
-            goto next;
+            p = p->next;
+            continue;
           }
 
 
@@ -112,9 +114,7 @@ int main(void)
 
           if( (pid = fork()) == 0) {
 
-            if (cmd.background){
-              signal(SIGINT,SIG_IGN);
-            } else {
+            if (!cmd.background){
               signal(SIGINT, SIG_DFL);
             }
 
@@ -122,10 +122,13 @@ int main(void)
 
             // redirect stdout
             if (cmd.rstdout != NULL) {
+
               int fd = open(cmd.rstdout, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
               dup2(fd, 1);
               close(fd);
+
             } else if (prev_pipe) {
+
               // printf("redirect command: %s stdout\n", *strs);
               dup2(pipefd_prev[1], 1);
             }
@@ -140,13 +143,16 @@ int main(void)
 
             //redirect stdin
             if (cmd.rstdin !=NULL) {
+
               int fd = open(cmd.rstdin, O_RDONLY);
               dup2(fd, 0);
               close(fd);
+
             } else if (p->next != NULL) {
               // printf("redirect command: %s stdin\n", *strs);
               dup2(pipefd[0], 0);
             }
+
 
             if(p->next != NULL || prev_pipe) {
               close(pipefd[0]);
@@ -167,23 +173,26 @@ int main(void)
               close(pipefd_prev[1]);
             }
 
-            if (!cmd.background) {
-              child_pids[child_pids_size] = pid;
-              child_pids_size++;
-            }
 
             if (p->next != NULL) {
               pipefd_prev[0] = pipefd[0];
               pipefd_prev[1] = pipefd[1];
             }
 
+
+            if (!cmd.background) {
+              child_pids[child_pids_size] = pid;
+              child_pids_size++;
+            }
+
             if (p->next == NULL) {
+
               if (prev_pipe) {
                 close(pipefd[0]);
                 close(pipefd[1]);
               }
 
-              if (cmd.background == false) {
+              if (!cmd.background) {
                 
                 
                 for(int i = 0; i < child_pids_size; i++) {
@@ -198,7 +207,6 @@ int main(void)
           } else {
             printf("DEBUG: ERROR\n");
           }
-          next:
           // printf("next\n");
           p = p->next;
         }
